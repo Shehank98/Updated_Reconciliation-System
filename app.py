@@ -1224,7 +1224,7 @@ def read_uploaded_file(uploaded_file):
 def main():
  st.set_page_config(page_title="Media Data Matcher", layout="wide")
 
- st.title("Media Data Reconciliation Tool")
+ st.title("Media Reconciliation")
  st.write("Upload data files, select channel, map themes, and find matching records between LMRB, TC and Schedule.")
 
  with st.sidebar:
@@ -1335,7 +1335,7 @@ def main():
              selected_mw_theme = st.selectbox("Select LMRB Theme", options=[""] + media_watch_themes)
          
          with col2:
-             st.subheader("TC Theme (Optional)")
+             st.subheader("TC Theme")
              if tc_std is not None:
                  tc_themes = sorted(tc_std['Advt_Theme'].dropna().unique())
                  selected_tc_theme = st.selectbox("Select TC Theme (leave empty if not in TC)", options=[""] + tc_themes)
@@ -1344,7 +1344,7 @@ def main():
                  st.info("No TC data uploaded")
          
          with col3:
-             st.subheader("Schedule Theme (Optional)")
+             st.subheader("Schedule Theme")
              if schedule_std is not None:
                  schedule_themes = sorted(schedule_std['Advt_Theme'].dropna().unique())
                  selected_schedule_theme = st.selectbox("Select Schedule Theme", options=[""] + schedule_themes)
