@@ -80,7 +80,7 @@ def create_summary_pdf_tables_only(summary_data, channel_name, matched_df, sched
     elements.append(Spacer(1, 24))
 
     
-    # 2. THEME DISTRIBUTION - Now grouped by duration as requested
+    # 2. THEME DISTRIBUTION - Now grouped by duration 
     if matched_df is not None and 'Media_Watch_Theme' in matched_df.columns:
         elements.append(Paragraph("Theme Distribution Summary", heading_style))
         
@@ -140,7 +140,7 @@ def create_summary_pdf_tables_only(summary_data, channel_name, matched_df, sched
 
 
 
-    # 6. SCHEDULE COMPLIANCE SUMMARY - Fixed with dynamic column detection
+    # SCHEDULE COMPLIANCE SUMMARY - Fixed with dynamic column detection
     if matched_df is not None and schedule_df is not None and 'Schedule_Theme' in matched_df.columns:
         elements.append(PageBreak())  # Start on a new page
         elements.append(Paragraph("Schedule Compliance Summary", heading_style))
@@ -1510,41 +1510,66 @@ def create_tc_vs_lmrb_excel_report(matched_df, program_mismatched_df, unmatched_
 
     return wb
 
-def highlight_matched_rows_excel(df, highlight_color="#FFFF00"):
-    """Highlight theme columns in the Excel output."""
-    wb = Workbook()
-    ws = wb.active
+def highlight_matched_rows_excel(media_watch_filtered, matched_mw_original, highlight_color="#FFFF00"):
+ """
+ Highlight duplicate rows in media_watch_filtered that are already present in matched_lmrb.
+ 
+ Args:
+     media_watch_filtered (pd.DataFrame): The filtered LMRB data.
+     matched_lmrb (pd.DataFrame): The matched LMRB data.
+     highlight_color (str): Hex color code for highlighting duplicates (default is yellow).
+     
+ Returns:
+     Workbook: An openpyxl Workbook object with highlighted duplicates.
+ """
+ # Ensure both DataFrames have the same columns for comparison
+ common_columns = list(set(media_watch_filtered.columns).intersection(set(matched_mw_original.columns)))
+ if not common_columns:
+     raise ValueError("No common columns found between media_watch_filtered and matched_lmrb for comparison.")
+ 
+ # Identify duplicate rows
+ duplicates_mask = media_watch_filtered[common_columns].apply(tuple, axis=1).isin(
+     matched_mw_original[common_columns].apply(tuple, axis=1)
+ )
+ duplicate_indices = duplicates_mask[duplicates_mask].index.tolist()  # Get indices of duplicates
+ 
+ # Create a new workbook
+ wb = Workbook()
+ ws = wb.active
+ ws.title = "Filtered LMRB Data"
 
-    # Add headers
-    for col_idx, column in enumerate(df.columns, 1):
-        ws.cell(row=1, column=col_idx, value=column)
+ # Add headers
+ for col_idx, column in enumerate(media_watch_filtered.columns, 1):
+     cell = ws.cell(row=1, column=col_idx, value=column)
+     cell.fill = PatternFill(start_color="DDDDDD", end_color="DDDDDD", fill_type="solid")  # Header background color
 
-    # Add data
-    for row_idx, row in enumerate(df.itertuples(index=False), 2):
-        for col_idx, value in enumerate(row, 1):
-            cell = ws.cell(row=row_idx, column=col_idx, value=value)
-            
-            if df.columns[col_idx-1] in ['Media_Watch_Theme', 'TC_Theme', 'Schedule_Theme']:
-                cell.fill = PatternFill(
-                    start_color=highlight_color.lstrip('#'),
-                    end_color=highlight_color.lstrip('#'),
-                    fill_type="solid"
-                )
+ # Add data and highlight duplicates
+ for row_idx, row in enumerate(media_watch_filtered.itertuples(index=False), 2):
+     for col_idx, value in enumerate(row, 1):
+         cell = ws.cell(row=row_idx, column=col_idx, value=value)
+         
+         # Highlight the entire row if it is a duplicate
+         if row_idx - 2 in duplicate_indices:  # Adjusting for zero-based index
+             cell.fill = PatternFill(
+                 start_color=highlight_color.lstrip('#'),
+                 end_color=highlight_color.lstrip('#'),
+                 fill_type="solid"
+             )
 
-    # Adjust column widths safely
-    for col_idx in range(1, ws.max_column + 1):
-        column_letter = get_column_letter(col_idx)
-        max_length = len(str(df.columns[col_idx-1])) + 2  # Start with header length
-        
-        # Check values in each row
-        for row_idx in range(2, ws.max_row + 1):
-            cell = ws.cell(row=row_idx, column=col_idx)
-            if hasattr(cell, 'value') and cell.value:
-                max_length = max(max_length, len(str(cell.value)))
-        
-        ws.column_dimensions[column_letter].width = max_length
+ # Adjust column widths safely
+ for col_idx in range(1, ws.max_column + 1):
+     column_letter = get_column_letter(col_idx)
+     max_length = len(str(media_watch_filtered.columns[col_idx-1])) + 2  # Start with header length
+     
+     # Check values in each row
+     for row_idx in range(2, ws.max_row + 1):
+         cell = ws.cell(row=row_idx, column=col_idx)
+         if hasattr(cell, 'value') and cell.value:
+             max_length = max(max_length, len(str(cell.value)))
+     
+     ws.column_dimensions[column_letter].width = max_length
 
-    return wb
+ return wb
 
 def create_schedule_compliance_report(matched_df, schedule_df, unmatched_schedule_df):
     """Create a comprehensive Excel report for schedule compliance."""
@@ -1678,9 +1703,13 @@ def create_schedule_compliance_report(matched_df, schedule_df, unmatched_schedul
                     matched_sheet.cell(row=row_idx, column=col_idx, value=value)
         
         # Adjust column widths
-        for col_idx, column in enumerate(display_columns, 1):
-            if column in matched_df.columns:
-                matched_sheet.column_dimensions[get_column_letter(col_idx)].width = max(len(column) + 2, 15)
+        ws = wb.active
+        for col_idx in range(1, ws.max_column + 1):
+            column_letter = get_column_letter(col_idx)
+            max_length = len(str(matched_df.columns[col_idx-1])) + 2  # Start with header length
+        #for col_idx, column in enumerate(display_columns, 1):
+           # if column in matched_df.columns:
+                #matched_sheet.column_dimensions[get_column_letter(col_idx)].width = max(len(column) + 2, 15)
 
     # Create Missed Schedule Sheet
     if unmatched_schedule_df is not None and not unmatched_schedule_df.empty:
@@ -1693,8 +1722,8 @@ def create_schedule_compliance_report(matched_df, schedule_df, unmatched_schedul
         
         # Find available columns
         available_columns = [col for col in important_columns if col in unmatched_schedule_df.columns]
-        remaining_columns = [col for col in unmatched_schedule_df.columns if col not in available_columns]
-        display_columns = available_columns + remaining_columns
+        #remaining_columns = [col for col in unmatched_schedule_df.columns if col not in available_columns]
+        display_columns = available_columns #+ #remaining_columns
         
         for col_idx, column in enumerate(display_columns, 1):
             if column in unmatched_schedule_df.columns:
@@ -2016,55 +2045,72 @@ def main():
             
             st.subheader("Theme Mapping")
             
-            media_watch_theme_col = st.selectbox(
-                "Select LMRB Theme Column", 
-                options=[col for col in media_watch_filtered.columns if 'theme' in col.lower() or 'aadvt' in col.lower()],
-                key="mw_theme_col"
+           # media_watch_theme_col = st.selectbox(
+                #"Select LMRB Theme Column", 
+                #options=[col for col in media_watch_filtered.columns if 'theme' in col.lower() or 'aadvt' in col.lower()],
+                #key="mw_theme_col"
+            #)
+            
+            # Automatically detect the LMRB Theme Column
+            media_watch_theme_col = next(
+            (col for col in media_watch_filtered.columns if 'theme' in col.lower() or 'aadvt' in col.lower()), 
+            None  # Default to None if no matching column is found
             )
-            
-            media_watch_std = standardize_dataframe(
-                media_watch_filtered,
-                theme_col=media_watch_theme_col,
-                program_col=next((col for col in media_watch_filtered.columns if 'program' in col.lower()), None),
-                time_col=next((col for col in media_watch_filtered.columns if 'time' in col.lower() and 'advt' in col.lower()), None),
-                date_col=next((col for col in media_watch_filtered.columns if 'date' in col.lower()), None)
-            )
-            
-            if tc_df is not None:
-                tc_theme_col = st.selectbox(
-                    "Select TC Theme Column", 
-                    options=[col for col in tc_df.columns if 'theme' in col.lower() or 'aadvt' in col.lower()],
-                    key="tc_theme_col"
-                )
-                
-                tc_std = standardize_dataframe(
-                    tc_df,
-                    theme_col=tc_theme_col,
-                    program_col=next((col for col in tc_df.columns if 'program' in col.lower()), None),
-                    time_col=next((col for col in tc_df.columns if 'time' in col.lower() and 'spot' in col.lower() or 'air' in col.lower()), None),
-                    date_col=next((col for col in tc_df.columns if 'date' in col.lower()), None)
-                )
-                
+
+            if not media_watch_theme_col:
+                st.error("No column matching 'theme' or 'aadvt' found in the Media Watch data.")
             else:
-                tc_std = None
-            
-            if schedule_df is not None:
-                schedule_theme_col = st.selectbox(
-                    "Select Schedule Theme Column", 
-                    options=[col for col in schedule_df.columns if 'theme' in col.lower() or 'advt' in col.lower()],
-                    key="schedule_theme_col"
+
+                media_watch_std = standardize_dataframe(
+                    media_watch_filtered,
+                    theme_col=media_watch_theme_col,
+                    program_col=next((col for col in media_watch_filtered.columns if 'program' in col.lower()), None),
+                    time_col=next((col for col in media_watch_filtered.columns if 'time' in col.lower() and 'advt' in col.lower()), None),
+                    date_col=next((col for col in media_watch_filtered.columns if 'date' in col.lower()), None)
                 )
                 
-                schedule_std = standardize_dataframe(
-                    schedule_df,
-                    theme_col=schedule_theme_col,
-                    program_col=next((col for col in schedule_df.columns if 'program' in col.lower()), None),
-                    time_col=next((col for col in schedule_df.columns if 'time' in col.lower()), None),
-                    date_col=next((col for col in schedule_df.columns if 'date' in col.lower()), None)
-                )
+                if tc_df is not None:
+
+                    # Automatically detect the LMRB Theme Column
+                    tc_theme_col = next(
+                    (col for col in tc_df.columns if 'theme' in col.lower() or 'aadvt' in col.lower()), 
+                    None  # Default to None if no matching column is found
+                    )
+
+                    if not media_watch_theme_col:
+                        st.error("No column matching 'theme' or 'aadvt' found in the TC.")
+                    else:
+                    
+                        tc_std = standardize_dataframe(
+                            tc_df,
+                            theme_col=tc_theme_col,
+                            program_col=next((col for col in tc_df.columns if 'program' in col.lower()), None),
+                            time_col=next((col for col in tc_df.columns if 'time' in col.lower() and 'spot' in col.lower() or 'air' in col.lower()), None),
+                            date_col=next((col for col in tc_df.columns if 'date' in col.lower()), None)
+                        )
+                        
+                    
                 
-            else:
-                schedule_std = None
+                if schedule_df is not None:
+                    
+                    # Automatically detect the LMRB Theme Column
+                    schedule_theme_col = next(
+                    (col for col in schedule_df.columns if 'theme' in col.lower() or 'aadvt' in col.lower()), 
+                    None  # Default to None if no matching column is found
+                    )
+
+                    if not media_watch_theme_col:
+                        st.error("No column matching 'theme' or 'aadvt' found in the TC.")
+                    else:
+                    
+                        schedule_std = standardize_dataframe(
+                            schedule_df,
+                            theme_col=schedule_theme_col,
+                            program_col=next((col for col in schedule_df.columns if 'program' in col.lower()), None),
+                            time_col=next((col for col in schedule_df.columns if 'time' in col.lower()), None),
+                            date_col=next((col for col in schedule_df.columns if 'date' in col.lower()), None)
+                        )
+                    
             
             # Create three columns for theme mapping
             col1, col2, col3 = st.columns(3)
@@ -2247,9 +2293,9 @@ def main():
                                         excel_buffer.seek(0)
                                         
                                         st.download_button(
-                                            label="Download Original LMRB Data (TC Matched)",
+                                            label="Download Matched LMRB Data (TC Matched)",
                                             data=excel_buffer,
-                                            file_name=f"{channel}_original_lmrb_tc_matched.xlsx",
+                                            file_name=f"{channel}_lmrb_tc_matched.xlsx",
                                             mime="application/vnd.ms-excel",
                                             key="download_lmrb_matched"
                                         )
@@ -2406,7 +2452,7 @@ def main():
                             highlight_color = st.color_picker("Choose highlight color for Excel", "#FFFF00")
                             
                             excel_buffer = BytesIO()
-                            wb = highlight_matched_rows_excel(final_results, highlight_color)
+                            wb = highlight_matched_rows_excel(media_watch_filtered, matched_mw_original, highlight_color)
                             wb.save(excel_buffer)
                             excel_buffer.seek(0)
                             
@@ -2881,7 +2927,7 @@ def main():
                                             if 'Date' not in related_lmrb.columns and all(col in related_lmrb.columns for col in ['Dd', 'Mn', 'Yr']):
                                                 related_lmrb['Date'] = related_lmrb.apply(lambda x: f"{int(x['Dd'])}/{int(x['Mn'])}/{int(x['Yr'])}", axis=1)
                                             
-                                            display_cols = ['Advt_Theme', 'Date', 'Advt_time', 'Program']
+                                            display_cols = ['Advt_Theme', 'Dur', 'Date', 'Advt_time', 'Program']
                                             display_cols = [c for c in display_cols if c in related_lmrb.columns]
                                             
                                             # Display related unmatched LMRB data with row identification
